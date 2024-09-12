@@ -54,8 +54,8 @@ namespace iD365FOntTools.Common
         /// <returns>VSApplicationContext</returns>
         internal static Microsoft.Dynamics.Framework.Tools.Labels.VSApplicationContext GetVSApplicationContext()
         {
-            var context = new Microsoft.Dynamics.Framework.Tools.Labels.VSApplicationContext(CommonUtil.DTE.DTE);
-            return context;
+            // = new Microsoft.Dynamics.Framework.Tools.Labels.VSApplicationContext(CommonUtil.DTE.DTE);
+            return null;
         }
 
         /// <summary>

@@ -50,15 +50,12 @@
         public override void OnClick(AddinEventArgs e)
         {
             try
-            {
+            {                                
                 var vsProject = Common.CommonUtil.GetCurrentProject();
-
                 EnvDTE.ProjectItems currentItems = Common.CommonUtil.GetCurrentProjectItems();
 
-                AxSecurityPrivilege maintain = this.createMainSecurityElement(Common.Constants.MAINTAIN, vsProject.Name);
-                AxSecurityPrivilege view = this.createMainSecurityElement(Common.Constants.VIEW, vsProject.Name);
-
-                this.iterate(currentItems, maintain, view);
+                // Ya no creamos privilegios generales aquí. Los crearemos por cada elemento en iterate
+                this.iterate(currentItems, vsProject.Name);
             }
             catch (Exception ex)
             {
@@ -67,57 +64,50 @@
         }
         #endregion
 
-        public void iterate(EnvDTE.ProjectItems currentItems, AxSecurityPrivilege maintain, AxSecurityPrivilege view)
+        public void iterate(EnvDTE.ProjectItems currentItems, string projectName)
         {
             Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType entryPointType;
 
             foreach (var item in currentItems)
             {
-                if (item is Microsoft.Dynamics.Framework.Tools.ProjectSupport.Automation.OAFolderItem)
+                if (item is Microsoft.Dynamics.Framework.Tools.ProjectSupport.Automation.OAFolderItem folder)
                 {
-                    Microsoft.Dynamics.Framework.Tools.ProjectSupport.Automation.OAFolderItem folder = item as Microsoft.Dynamics.Framework.Tools.ProjectSupport.Automation.OAFolderItem;
-                    this.iterate(folder.ProjectItems, maintain, view);
+                    this.iterate(folder.ProjectItems, projectName);
                 }
-                else if (item is Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem)
+                else if (item is Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem current)
                 {
-                    Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem current = item as Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem;
                     Microsoft.Dynamics.Framework.Tools.ProjectSystem.VSProjectFileNode currentObject = current.Object as Microsoft.Dynamics.Framework.Tools.ProjectSystem.VSProjectFileNode;
                     Microsoft.Dynamics.Framework.Tools.ProjectSystem.VSFileNodeProperties properties = currentObject.NodeProperties as Microsoft.Dynamics.Framework.Tools.ProjectSystem.VSFileNodeProperties;
 
-                    if (properties.ItemType == "Menu Item Action"
-                        || properties.ItemType == "Menu Item Output"
-                        || properties.ItemType == "Menu Item Display")
+                    if (properties.ItemType == "Menu Item Action" || properties.ItemType == "Menu Item Output" || properties.ItemType == "Menu Item Display")
                     {
-                        entryPointType = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemAction;
-                        if (properties.ItemType == "Menu Item Action")
-                        {
-                            entryPointType = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemAction;
-                        }
-                        else if (properties.ItemType == "Menu Item Display")
-                        {
-                            entryPointType = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemDisplay;
-                        }
-                        else if (properties.ItemType == "Menu Item Output")
-                        {
-                            entryPointType = Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemOutput;
-                        }
+                        entryPointType = GetEntryPointType(properties.ItemType);
 
-                        this.updateSecurityFromMenuItem(current, entryPointType, Common.Constants.MAINTAIN, maintain);
-                        this.updateSecurityFromMenuItem(current, entryPointType, Common.Constants.VIEW, view);
-                    }
-                    else if (properties.ItemType == "Data Entity")
-                    {
-                        IDataEntityView selectedElementDataEntity = item as IDataEntityView;
-                        this.updateSecurityFromDataEntity(current, Common.Constants.MAINTAIN, maintain);
-                        this.updateSecurityFromDataEntity(current, Common.Constants.VIEW, view);
-                    }
-                    else if (properties.ItemType == "Table")
-                    {
-                        ITableBrowsable selectedElementTable = item as ITableBrowsable;
-                        this.updateSecurityFromTable(current, Common.Constants.MAINTAIN, maintain);
-                        this.updateSecurityFromTable(current, Common.Constants.VIEW, view);
+                        // Crear un privilegio "Maintain" para este elemento
+
+                        var maintainPrivilege = this.createMainSecurityElement(Common.Constants.MAINTAIN, current.Caption == "" ? current.Name : current.Caption);
+                        this.updateSecurityFromMenuItem(current, entryPointType, Common.Constants.MAINTAIN, maintainPrivilege);
+
+                        // Crear un privilegio "View" para este elemento
+                        var viewPrivilege = this.createMainSecurityElement(Common.Constants.VIEW, current.Caption == "" ? current.Name : current.Caption);
+                        this.updateSecurityFromMenuItem(current, entryPointType, Common.Constants.VIEW, viewPrivilege);
                     }
                 }
+            }
+        }
+
+        private Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType GetEntryPointType(string itemType)
+        {
+            switch (itemType)
+            {
+                case "Menu Item Action":
+                    return Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemAction;
+                case "Menu Item Display":
+                    return Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemDisplay;
+                case "Menu Item Output":
+                    return Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemOutput;
+                default:
+                    throw new ArgumentException("Tipo de elemento no reconocido.");
             }
         }
 
@@ -145,7 +135,12 @@
                                                     : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrantPermission.Unset
                 }
             };
-            entryPoint.Forms.Add(new AxSecurityEntryPointReferenceForm() { Name = selectedMenuItem.Name });
+
+            if(entryPointType == Microsoft.Dynamics.AX.Metadata.Core.MetaModel.EntryPointType.MenuItemDisplay)
+            {
+                entryPoint.Forms.Add(new AxSecurityEntryPointReferenceForm() { Name = selectedMenuItem.Name });                
+            }
+
             axSecurityPrivMaint.EntryPoints.Add(entryPoint);
 
             // Find current model
@@ -159,97 +154,87 @@
             return axSecurityPrivMaint.Name;
         }
 
-        private AxSecurityPrivilege updateSecurityFromDataEntity(
-                Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem selectedDataEntity,
-                string suffix,
-                AxSecurityPrivilege privilege)
+        //private AxSecurityPrivilege updateSecurityFromDataEntity(
+        //        Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem selectedDataEntity,
+        //        string suffix,
+        //        AxSecurityPrivilege privilege)
+        //{
+
+        //    //Create Security privilege
+        //    AxSecurityPrivilege axSecurityPriv = privilege;
+
+        //    axSecurityPriv.DataEntityPermissions.Add(
+        //        new AxSecurityDataEntityPermission()
+        //        {
+        //            Grant = suffix == Common.Constants.MAINTAIN
+        //                    ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantDelete()
+        //                    : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantRead(),
+        //            Name = selectedDataEntity.Name
+        //        });
+
+        //    // Find current model
+        //    var modelSaveInfo = Common.CommonUtil.GetCurrentModelSaveInfo();
+
+        //    var metaModelService = Common.CommonUtil.GetModelSaveService();
+        //    metaModelService.CreateSecurityPrivilege(axSecurityPriv, modelSaveInfo);
+
+        //    return privilege;
+        //}
+
+        //private AxSecurityPrivilege updateSecurityFromTable(
+        //        Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem selectedDataEntity,
+        //        string suffix,
+        //        AxSecurityPrivilege privilege)
+        //{
+
+        //    //Create Security privilege
+        //    AxSecurityPrivilege axSecurityPriv = privilege;
+
+        //    axSecurityPriv.DirectAccessPermissions.Add(
+        //        new AxSecurityDataEntityReference()
+        //        {
+        //            Grant = suffix == Common.Constants.MAINTAIN
+        //                    ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantDelete()
+        //                    : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantRead(),
+        //            Name = selectedDataEntity.Name
+        //        });
+
+        //    var modelSaveInfo = Common.CommonUtil.GetCurrentModelSaveInfo();
+
+        //    var metaModelService = Common.CommonUtil.GetModelSaveService();
+        //    metaModelService.CreateSecurityPrivilege(axSecurityPriv, modelSaveInfo);
+
+        //    return privilege;
+        //}
+
+        private AxSecurityPrivilege createMainSecurityElement(string suffix, string elementName)
         {
+            AxSecurityPrivilege axSecurityPrivMaint = new AxSecurityPrivilege() { Name = elementName + suffix };
 
-            //Create Security privilege
-            AxSecurityPrivilege axSecurityPriv = privilege;
-
-            axSecurityPriv.DataEntityPermissions.Add(
-                new AxSecurityDataEntityPermission()
-                {
-                    Grant = suffix == Common.Constants.MAINTAIN
-                            ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantDelete()
-                            : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantRead(),
-                    Name = selectedDataEntity.Name
-                });
-
-            // Find current model
-            var modelSaveInfo = Common.CommonUtil.GetCurrentModelSaveInfo();
-
-            var metaModelService = Common.CommonUtil.GetModelSaveService();
-            metaModelService.CreateSecurityPrivilege(axSecurityPriv, modelSaveInfo);
-
-            return privilege;
-        }
-
-        private AxSecurityPrivilege updateSecurityFromTable(
-                Microsoft.Dynamics.Framework.Tools.ProjectSystem.OAVSProjectFileItem selectedDataEntity,
-                string suffix,
-                AxSecurityPrivilege privilege)
-        {
-
-            //Create Security privilege
-            AxSecurityPrivilege axSecurityPriv = privilege;
-
-            axSecurityPriv.DirectAccessPermissions.Add(
-                new AxSecurityDataEntityReference()
-                {
-                    Grant = suffix == Common.Constants.MAINTAIN
-                            ? Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantDelete()
-                            : Microsoft.Dynamics.AX.Metadata.Core.MetaModel.AccessGrant.ConstructGrantRead(),
-                    Name = selectedDataEntity.Name
-                });
-
-            var modelSaveInfo = Common.CommonUtil.GetCurrentModelSaveInfo();
-
-            var metaModelService = Common.CommonUtil.GetModelSaveService();
-            metaModelService.CreateSecurityPrivilege(axSecurityPriv, modelSaveInfo);
-
-            return privilege;
-        }
-
-        private AxSecurityPrivilege createMainSecurityElement(
-                string suffix,
-                string name)
-        {
-
-            AxSecurityPrivilege axSecurityPrivMaint = new AxSecurityPrivilege() { Name = name + suffix };
-
-
-            // Assign the correct label on this by addint maintain or view in the label, copy the base label from the menu item
-            string label = name;
+            // Asignar la etiqueta correcta para cada elemento
+            string label = elementName;
             if (label.StartsWith("@"))
             {
                 label = Labels.LabelHelper.FindLabelGlobally(label).LabelText;
             }
 
-            if (suffix.Equals(Common.Constants.MAINTAIN))
-            {
-                label = "Maintain " + label;
-            }
-            else if (suffix.Equals(Common.Constants.VIEW))
-            {
-                label = "View " + label;
-            }
-            // Convert to camel case
-            if (String.IsNullOrEmpty(label) == false)
+            label = suffix.Equals(Common.Constants.MAINTAIN) ? "Maintain " + label : "View " + label;
+
+            // Convertir a camel case
+            if (!string.IsNullOrEmpty(label))
             {
                 char[] a = label.ToLowerInvariant().ToCharArray();
                 a[0] = char.ToUpperInvariant(a[0]);
-                label = new String(a);
+                label = new string(a);
             }
             axSecurityPrivMaint.Label = label;
 
-            // Find current model
+            // Encontrar el modelo actual
             var modelSaveInfo = Common.CommonUtil.GetCurrentModelSaveInfo();
-
             var metaModelService = Common.CommonUtil.GetModelSaveService();
             metaModelService.CreateSecurityPrivilege(axSecurityPrivMaint, modelSaveInfo);
 
+            // Añadir el elemento al proyecto
             Common.CommonUtil.AddElementToProject(axSecurityPrivMaint);
 
             return axSecurityPrivMaint;
