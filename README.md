@@ -8,11 +8,11 @@ An extension to create the security privilege for the current project
 # How to install the extension
   
 **Option 1: Manual installation**
-1- Download all the dll files from the folder [OutputDlls](OutputDlls) 
-2- Close Visual studio
-3- Locate the folder where Visual Studio has the Dynamics 365 extensions by searching "Microsoft.Dynamics.Framework.Tools*" in the following location: C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\Extensions
-4- Copy the dll files downloaded into the folder
-5- Open Visual studio
+1. Download all the dll files from the folder [OutputDlls](OutputDlls) 
+2. Close Visual studio
+3. Locate the folder where Visual Studio has the Dynamics 365 extensions by searching "Microsoft.Dynamics.Framework.Tools*" in the following location: C:\Program Files\Microsoft Visual Studio\2022\Professional\Common7\IDE\Extensions
+4. Copy the dll files downloaded into the folder
+5. Open Visual studio
 
 # Features
 
